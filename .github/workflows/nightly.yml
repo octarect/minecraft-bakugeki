@@ -1,0 +1,39 @@
+name: Nightly
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Build
+        working-directory: plugins/exploding-snowball
+        run: ./gradlew shadowJar
+
+      - name: Rename JAR
+        working-directory: plugins/exploding-snowball/build/libs
+        run: mv exploding-snowball-*.jar exploding-snowball-nightly.jar
+
+      - name: Recreate nightly release
+        working-directory: plugins/exploding-snowball
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nightly --yes || true
+          gh release create nightly \
+            --title "Nightly" \
+            --notes "Built from master @ ${{ github.sha }}" \
+            --prerelease \
+            build/libs/exploding-snowball-nightly.jar

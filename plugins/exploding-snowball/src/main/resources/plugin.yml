@@ -1,0 +1,4 @@
+name: ExplodingSnowball
+version: 1.0.0
+main: io.github.octarect.explodingsnowball.ExplodingSnowballPlugin
+api-version: "1.21"
