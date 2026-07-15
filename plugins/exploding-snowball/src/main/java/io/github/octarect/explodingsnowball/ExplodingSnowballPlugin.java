@@ -21,28 +21,51 @@ import net.kyori.adventure.text.Component;
 public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
 
     private static final int MAX_LEVEL = 8;
+    private static final int TYPE_EXPLODING = 0;
+    private static final int TYPE_INCENDIARY = 1;
+    private static final int TYPE_THERMOBARIC = 2;
+
     private NamespacedKey markerKey;
     private NamespacedKey[] recipeKeys;
 
     @Override
     public void onEnable() {
         markerKey = new NamespacedKey(this, "exploding");
-        recipeKeys = new NamespacedKey[MAX_LEVEL];
+        recipeKeys = new NamespacedKey[MAX_LEVEL * 3];
 
         ShapelessRecipe lv1Recipe = new ShapelessRecipe(
-                new NamespacedKey(this, "exploding_snowball_lv1"), createCustomItem(1));
+                new NamespacedKey(this, "exploding_snowball_lv1"), createItem(TYPE_EXPLODING, 1));
         lv1Recipe.addIngredient(4, Material.SNOWBALL);
         recipeKeys[0] = lv1Recipe.getKey();
         Bukkit.addRecipe(lv1Recipe);
 
         for (int lv = 2; lv <= MAX_LEVEL; lv++) {
             ShapelessRecipe recipe = new ShapelessRecipe(
-                    new NamespacedKey(this, "exploding_snowball_lv" + lv), createCustomItem(lv));
-            recipe.addIngredient(new RecipeChoice.ExactChoice(createCustomItem(lv - 1)));
-            recipe.addIngredient(new RecipeChoice.ExactChoice(createCustomItem(lv - 1)));
-            recipe.addIngredient(new RecipeChoice.ExactChoice(createCustomItem(lv - 1)));
-            recipe.addIngredient(new RecipeChoice.ExactChoice(createCustomItem(lv - 1)));
+                    new NamespacedKey(this, "exploding_snowball_lv" + lv), createItem(TYPE_EXPLODING, lv));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv - 1)));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv - 1)));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv - 1)));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv - 1)));
             recipeKeys[lv - 1] = recipe.getKey();
+            Bukkit.addRecipe(recipe);
+        }
+
+        for (int lv = 1; lv <= MAX_LEVEL; lv++) {
+            ShapelessRecipe recipe = new ShapelessRecipe(
+                    new NamespacedKey(this, "incendiary_snowball_lv" + lv), createItem(TYPE_INCENDIARY, lv));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv)));
+            recipe.addIngredient(Material.GUNPOWDER);
+            recipeKeys[MAX_LEVEL + lv - 1] = recipe.getKey();
+            Bukkit.addRecipe(recipe);
+        }
+
+        for (int lv = 1; lv <= MAX_LEVEL; lv++) {
+            ShapelessRecipe recipe = new ShapelessRecipe(
+                    new NamespacedKey(this, "thermobaric_snowball_lv" + lv), createItem(TYPE_THERMOBARIC, lv));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv)));
+            recipe.addIngredient(Material.GUNPOWDER);
+            recipe.addIngredient(Material.GUNPOWDER);
+            recipeKeys[MAX_LEVEL * 2 + lv - 1] = recipe.getKey();
             Bukkit.addRecipe(recipe);
         }
 
@@ -56,22 +79,27 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         }
     }
 
-    private ItemStack createCustomItem(int level) {
+    private ItemStack createItem(int type, int level) {
         ItemStack item = new ItemStack(Material.SNOWBALL);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(Component.text("爆発する雪玉Lv" + level));
-        meta.setCustomModelData(level);
+        String[] names = {"爆発する雪玉", "焼夷雪玉", "燃料気化雪玉"};
+        int[] cmdBase = {0, 10, 20};
+        meta.displayName(Component.text(names[type] + "Lv" + level));
+        meta.setCustomModelData(cmdBase[type] + level);
         meta.setMaxStackSize(64);
         item.setItemMeta(meta);
         return item;
     }
 
-    private int getLevel(ItemStack item) {
-        if (item == null || item.getType() != Material.SNOWBALL) return 0;
+    private int[] getTypeAndLevel(ItemStack item) {
+        if (item == null || item.getType() != Material.SNOWBALL) return null;
         ItemMeta meta = item.getItemMeta();
-        if (meta == null || !meta.hasCustomModelData()) return 0;
+        if (meta == null || !meta.hasCustomModelData()) return null;
         int cmd = meta.getCustomModelData();
-        return (cmd >= 1 && cmd <= MAX_LEVEL) ? cmd : 0;
+        if (cmd >= 1 && cmd <= MAX_LEVEL) return new int[]{TYPE_EXPLODING, cmd};
+        if (cmd >= 11 && cmd <= 10 + MAX_LEVEL) return new int[]{TYPE_INCENDIARY, cmd - 10};
+        if (cmd >= 21 && cmd <= 20 + MAX_LEVEL) return new int[]{TYPE_THERMOBARIC, cmd - 20};
+        return null;
     }
 
     @EventHandler
@@ -80,14 +108,18 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
                 && event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
 
         ItemStack item = event.getItem();
-        int level = getLevel(item);
-        if (level == 0) return;
+        int[] typeAndLevel = getTypeAndLevel(item);
+        if (typeAndLevel == null) return;
 
         event.setCancelled(true);
 
+        int type = typeAndLevel[0];
+        int level = typeAndLevel[1];
+        byte encoded = (byte) (type * 10 + level);
+
         Player player = event.getPlayer();
         Snowball snowball = player.launchProjectile(Snowball.class);
-        snowball.getPersistentDataContainer().set(markerKey, PersistentDataType.BYTE, (byte) level);
+        snowball.getPersistentDataContainer().set(markerKey, PersistentDataType.BYTE, encoded);
 
         item.setAmount(item.getAmount() - 1);
     }
@@ -95,10 +127,15 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onProjectileHit(ProjectileHitEvent event) {
         if (!(event.getEntity() instanceof Snowball snowball)) return;
-        Byte level = snowball.getPersistentDataContainer().get(markerKey, PersistentDataType.BYTE);
-        if (level == null || level == 0) return;
+        Byte encoded = snowball.getPersistentDataContainer().get(markerKey, PersistentDataType.BYTE);
+        if (encoded == null || encoded == 0) return;
 
+        int type = encoded / 10;
+        int level = encoded % 10;
         float power = (float) Math.pow(2.0, level);
-        snowball.getWorld().createExplosion(snowball.getLocation(), power, false, true);
+
+        boolean fire = type == TYPE_INCENDIARY || type == TYPE_THERMOBARIC;
+        boolean breakBlocks = type == TYPE_EXPLODING || type == TYPE_THERMOBARIC;
+        snowball.getWorld().createExplosion(snowball.getLocation(), power, fire, breakBlocks);
     }
 }
