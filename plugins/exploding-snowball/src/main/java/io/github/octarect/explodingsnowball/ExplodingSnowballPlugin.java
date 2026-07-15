@@ -17,6 +17,11 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Location;
+import org.bukkit.event.entity.EntityDamageEvent;
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
 
@@ -27,6 +32,7 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
 
     private NamespacedKey markerKey;
     private NamespacedKey[] recipeKeys;
+    private final Map<Location, Float> incendiaryExplosions = Collections.synchronizedMap(new WeakHashMap<>());
 
     @Override
     public void onEnable() {
@@ -136,6 +142,25 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
 
         boolean fire = type == TYPE_INCENDIARY || type == TYPE_THERMOBARIC;
         boolean breakBlocks = type == TYPE_EXPLODING || type == TYPE_THERMOBARIC;
-        snowball.getWorld().createExplosion(snowball.getLocation(), power, fire, breakBlocks);
+        Location loc = snowball.getLocation();
+        if (type == TYPE_INCENDIARY) {
+            incendiaryExplosions.put(loc, power);
+            Bukkit.getScheduler().runTask(this, () -> incendiaryExplosions.remove(loc));
+        }
+        snowball.getWorld().createExplosion(loc, power, fire, breakBlocks);
+    }
+
+    @EventHandler
+    public void onEntityDamage(EntityDamageEvent event) {
+        if (event.getCause() != EntityDamageEvent.DamageCause.ENTITY_EXPLOSION) return;
+        Location loc = event.getEntity().getLocation();
+        for (Map.Entry<Location, Float> entry : incendiaryExplosions.entrySet()) {
+            Location explosion = entry.getKey();
+            float power = entry.getValue();
+            if (explosion.getWorld().equals(loc.getWorld()) && explosion.distanceSquared(loc) <= power * power) {
+                event.setCancelled(true);
+                return;
+            }
+        }
     }
 }
