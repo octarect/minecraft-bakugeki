@@ -3,8 +3,19 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
+fun gitVersion(): String {
+    System.getenv("VERSION")?.takeIf { it.isNotEmpty() }?.let { return it }
+    val tag = runCatching {
+        ProcessBuilder("git", "describe", "--tags", "--exact-match")
+            .start().inputStream.bufferedReader().readText().trim()
+    }.getOrNull()
+    if (!tag.isNullOrEmpty()) return tag
+    return ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+        .start().inputStream.bufferedReader().readText().trim()
+}
+
 group = "io.github.octarect"
-version = "1.0.0"
+version = gitVersion()
 
 repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
