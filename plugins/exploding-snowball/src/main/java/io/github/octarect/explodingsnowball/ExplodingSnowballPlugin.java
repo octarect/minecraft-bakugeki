@@ -61,6 +61,7 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Component.text("爆発する雪玉Lv" + level));
         meta.setCustomModelData(level);
+        meta.setMaxStackSize(64);
         item.setItemMeta(meta);
         return item;
     }
