@@ -8,19 +8,27 @@ import org.bukkit.entity.Snowball;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.RecipeChoice;
+import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Location;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.util.Vector;
+
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.WeakHashMap;
 
 public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
@@ -29,15 +37,18 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
     private static final int TYPE_EXPLODING = 0;
     private static final int TYPE_INCENDIARY = 1;
     private static final int TYPE_THERMOBARIC = 2;
+    private static final int LAUNCHER_CMD = 31;
 
     private NamespacedKey markerKey;
     private NamespacedKey[] recipeKeys;
     private final Map<Location, Float> incendiaryExplosions = Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<UUID, Long> chargingMap = new HashMap<>();
+    private final Map<UUID, BukkitTask> chargingTasks = new HashMap<>();
 
     @Override
     public void onEnable() {
         markerKey = new NamespacedKey(this, "exploding");
-        recipeKeys = new NamespacedKey[MAX_LEVEL * 3];
+        recipeKeys = new NamespacedKey[MAX_LEVEL * 3 + 1];
 
         ShapelessRecipe lv1Recipe = new ShapelessRecipe(
                 new NamespacedKey(this, "exploding_snowball_lv1"), createItem(TYPE_EXPLODING, 1));
@@ -75,6 +86,14 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
             Bukkit.addRecipe(recipe);
         }
 
+        ShapedRecipe launcherRecipe = new ShapedRecipe(
+                new NamespacedKey(this, "snowball_launcher"), createLauncher());
+        launcherRecipe.shape("SSS", "SBS", "SSS");
+        launcherRecipe.setIngredient('S', Material.STONE);
+        launcherRecipe.setIngredient('B', Material.BOW);
+        recipeKeys[MAX_LEVEL * 3] = launcherRecipe.getKey();
+        Bukkit.addRecipe(launcherRecipe);
+
         Bukkit.getPluginManager().registerEvents(this, this);
     }
 
@@ -83,6 +102,9 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         for (NamespacedKey key : recipeKeys) {
             if (key != null) Bukkit.removeRecipe(key);
         }
+        for (BukkitTask task : chargingTasks.values()) task.cancel();
+        chargingTasks.clear();
+        chargingMap.clear();
     }
 
     private ItemStack createItem(int type, int level) {
@@ -97,6 +119,21 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         return item;
     }
 
+    private ItemStack createLauncher() {
+        ItemStack item = new ItemStack(Material.BOW);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text("爆発する雪玉ランチャー"));
+        meta.setCustomModelData(LAUNCHER_CMD);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private boolean isLauncher(ItemStack item) {
+        if (item == null || item.getType() != Material.BOW) return false;
+        ItemMeta meta = item.getItemMeta();
+        return meta != null && meta.hasCustomModelData() && meta.getCustomModelData() == LAUNCHER_CMD;
+    }
+
     private int[] getTypeAndLevel(ItemStack item) {
         if (item == null || item.getType() != Material.SNOWBALL) return null;
         ItemMeta meta = item.getItemMeta();
@@ -108,12 +145,27 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         return null;
     }
 
+    private ItemStack findSnowball(Player player) {
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (getTypeAndLevel(item) != null) return item;
+        }
+        return null;
+    }
+
     @EventHandler
     public void onPlayerInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_AIR
                 && event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
 
         ItemStack item = event.getItem();
+
+        if (isLauncher(item)) {
+            if (findSnowball(event.getPlayer()) == null) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+
         int[] typeAndLevel = getTypeAndLevel(item);
         if (typeAndLevel == null) return;
 
@@ -128,6 +180,49 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         snowball.getPersistentDataContainer().set(markerKey, PersistentDataType.BYTE, encoded);
 
         item.setAmount(item.getAmount() - 1);
+    }
+
+    @EventHandler
+    public void onEntityShootBow(EntityShootBowEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+        if (!isLauncher(event.getBow())) return;
+
+        event.setCancelled(true);
+
+        ItemStack ammo = findSnowball(player);
+        if (ammo == null) return;
+
+        int[] typeAndLevel = getTypeAndLevel(ammo);
+        if (typeAndLevel == null) return;
+
+        double speed = 1.0 + event.getForce() * 7.0;
+
+        Snowball snowball = player.launchProjectile(Snowball.class);
+        Vector velocity = snowball.getVelocity().normalize().multiply(speed);
+        snowball.setVelocity(velocity);
+
+        byte encoded = (byte) (typeAndLevel[0] * 10 + typeAndLevel[1]);
+        snowball.getPersistentDataContainer().set(markerKey, PersistentDataType.BYTE, encoded);
+
+        ammo.setAmount(ammo.getAmount() - 1);
+
+        UUID id = player.getUniqueId();
+        BukkitTask task = chargingTasks.remove(id);
+        if (task != null) task.cancel();
+        chargingMap.remove(id);
+        player.sendActionBar(Component.empty());
+    }
+
+    @EventHandler
+    public void onPlayerItemHeld(PlayerItemHeldEvent event) {
+        Player player = event.getPlayer();
+        ItemStack current = player.getInventory().getItem(event.getPreviousSlot());
+        if (!isLauncher(current)) return;
+        UUID id = player.getUniqueId();
+        BukkitTask task = chargingTasks.remove(id);
+        if (task != null) task.cancel();
+        chargingMap.remove(id);
+        player.sendActionBar(Component.empty());
     }
 
     @EventHandler
