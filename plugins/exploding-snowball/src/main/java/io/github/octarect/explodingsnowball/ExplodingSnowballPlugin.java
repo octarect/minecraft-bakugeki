@@ -1,6 +1,7 @@
 package io.github.octarect.explodingsnowball;
 
 import org.bukkit.Bukkit;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -140,6 +141,7 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Component.text("爆発する雪玉ランチャー"));
         meta.setCustomModelData(LAUNCHER_CMD);
+        meta.addEnchant(Enchantment.INFINITY, 1, true);
         item.setItemMeta(meta);
         return item;
     }
@@ -204,6 +206,7 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         if (!isLauncher(event.getBow())) return;
 
         event.setCancelled(true);
+        event.setConsumeItem(false);
 
         ItemStack ammo = findSnowball(player);
         if (ammo == null) return;
