@@ -48,7 +48,7 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         markerKey = new NamespacedKey(this, "exploding");
-        recipeKeys = new NamespacedKey[MAX_LEVEL * 3 + 1];
+        recipeKeys = new NamespacedKey[MAX_LEVEL * 5 - 1];
 
         ShapelessRecipe lv1Recipe = new ShapelessRecipe(
                 new NamespacedKey(this, "exploding_snowball_lv1"), createItem(TYPE_EXPLODING, 1));
@@ -59,8 +59,6 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         for (int lv = 2; lv <= MAX_LEVEL; lv++) {
             ShapelessRecipe recipe = new ShapelessRecipe(
                     new NamespacedKey(this, "exploding_snowball_lv" + lv), createItem(TYPE_EXPLODING, lv));
-            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv - 1)));
-            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv - 1)));
             recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv - 1)));
             recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv - 1)));
             recipeKeys[lv - 1] = recipe.getKey();
@@ -76,13 +74,31 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
             Bukkit.addRecipe(recipe);
         }
 
+        for (int lv = 2; lv <= MAX_LEVEL; lv++) {
+            ShapelessRecipe recipe = new ShapelessRecipe(
+                    new NamespacedKey(this, "incendiary_snowball_lv" + lv + "_upgrade"), createItem(TYPE_INCENDIARY, lv));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_INCENDIARY, lv - 1)));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_INCENDIARY, lv - 1)));
+            recipeKeys[MAX_LEVEL * 2 + lv - 2] = recipe.getKey();
+            Bukkit.addRecipe(recipe);
+        }
+
         for (int lv = 1; lv <= MAX_LEVEL; lv++) {
             ShapelessRecipe recipe = new ShapelessRecipe(
                     new NamespacedKey(this, "thermobaric_snowball_lv" + lv), createItem(TYPE_THERMOBARIC, lv));
             recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_EXPLODING, lv)));
             recipe.addIngredient(Material.GUNPOWDER);
             recipe.addIngredient(Material.GUNPOWDER);
-            recipeKeys[MAX_LEVEL * 2 + lv - 1] = recipe.getKey();
+            recipeKeys[MAX_LEVEL * 3 - 1 + lv - 1] = recipe.getKey();
+            Bukkit.addRecipe(recipe);
+        }
+
+        for (int lv = 2; lv <= MAX_LEVEL; lv++) {
+            ShapelessRecipe recipe = new ShapelessRecipe(
+                    new NamespacedKey(this, "thermobaric_snowball_lv" + lv + "_upgrade"), createItem(TYPE_THERMOBARIC, lv));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_THERMOBARIC, lv - 1)));
+            recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(TYPE_THERMOBARIC, lv - 1)));
+            recipeKeys[MAX_LEVEL * 4 - 1 + lv - 2] = recipe.getKey();
             Bukkit.addRecipe(recipe);
         }
 
@@ -91,7 +107,7 @@ public class ExplodingSnowballPlugin extends JavaPlugin implements Listener {
         launcherRecipe.shape("SSS", "SBS", "SSS");
         launcherRecipe.setIngredient('S', Material.STONE);
         launcherRecipe.setIngredient('B', Material.BOW);
-        recipeKeys[MAX_LEVEL * 3] = launcherRecipe.getKey();
+        recipeKeys[MAX_LEVEL * 5 - 2] = launcherRecipe.getKey();
         Bukkit.addRecipe(launcherRecipe);
 
         Bukkit.getPluginManager().registerEvents(this, this);
